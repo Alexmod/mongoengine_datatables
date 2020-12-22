@@ -46,3 +46,4 @@ coverage.xml
 docs/_build/
 
 git.sh
+pyproject.toml
