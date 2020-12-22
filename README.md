@@ -80,9 +80,13 @@ def hello_world():
 if __name__ == "__main__":
     app.run(debug=True, host='0.0.0.0')
 ```
+
 Install modules & run:
+
 `python app.py`
+
 Results:
+
 ![](https://habrastorage.org/webt/so/ug/yg/sougygusqikirtcmjkzowk_yzmu.png)
 
 ### Advanced usage:
@@ -93,7 +97,7 @@ Results:
 `DataTables(your_model, request_args, embed_search={}, q_obj=[], custom_filter={})`
 
 ### For datetime field
-`DataTables  return datetime as  epoch time with milliseconds. Example:
+DataTables  return datetime as  epoch time with milliseconds. Example:
 
 `{'my_date': {'$date': 1605116909954}}`
 
