@@ -6,8 +6,9 @@ Works with Flask and Django. Supports column sorting and filtering by multiple s
 ###  Install
 You can install with pip:
 
-`pip install mongoengine_datatables`
-
+```bash
+pip install mongoengine_datatables
+```
 
 ###  Minimal example
 Copy paste this code to app.py
