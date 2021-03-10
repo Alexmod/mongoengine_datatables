@@ -1,4 +1,4 @@
-# mongoengine_datatables
+# mongoengine datatables
 A script for using the jQuery plug-in DataTables server-side processing with MongoEngine.
 
 Works with Flask and Django. Supports column sorting and filtering by multiple search terms. Supports ReferenceFields & EmbeddedDocumentField for search.
@@ -10,7 +10,7 @@ You can install with pip:
 pip install mongoengine_datatables
 ```
 
-###  Minimal example
+###  Minimal example mongoengine datatables 
 Copy paste this code to app.py
 ```python
 from flask import Flask, render_template_string, jsonify, request

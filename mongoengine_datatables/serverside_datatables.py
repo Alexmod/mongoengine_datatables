@@ -1,6 +1,5 @@
 '''DataTables server-side for Flask-MongoEngine'''
 import json
-import re
 
 from bson import json_util
 from mongoengine.fields import (BooleanField, DecimalField,
@@ -108,12 +107,10 @@ class DataTables(object):
 
     def query_by_col_type(self, _q, col):
         '''Build a query depending on the field type'''
-        escaped = re.escape(_q)
-        regexp = re.compile(f'.*{escaped}.*', re.IGNORECASE)
 
         if self.field_type_dict.get(col) == 'number':
             if _q.isdigit():
-                return [Q(**{col + '__icontains': _q})]
+                return [Q(**{col: _q})]
             return []
         if self.field_type_dict.get(col) == 'embed':
             if not self.embed_search:
@@ -124,7 +121,7 @@ class DataTables(object):
                 _em.append(Q(**{_emb: _q}))
             return _em
 
-        return [Q(**{col: regexp})]
+        return [Q(**{col + '__icontains': _q})]
 
     @property
     def get_search_query(self):
@@ -152,9 +149,8 @@ class DataTables(object):
             queries.append(self.q_obj)
 
         _search_query = QCombination(QCombination.OR, queries)
-
         if _own_col_q:
-            _own_col_q = QCombination(QCombination.OR, _own_col_q)
+            _own_col_q = QCombination(QCombination.AND, _own_col_q)
             _search_query = (_search_query & _own_col_q)
 
         if self.custom_filter:
