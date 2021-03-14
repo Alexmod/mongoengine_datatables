@@ -3,6 +3,8 @@ A script for using the jQuery plug-in DataTables server-side processing with Mon
 
 Works with Flask and Django. Supports column sorting and filtering by multiple search terms. Supports ReferenceFields & EmbeddedDocumentField for search.
 
+[![Downloads](https://pepy.tech/badge/mongoengine-datatables)](https://pepy.tech/project/mongoengine-datatables)
+
 ###  Install
 You can install with pip:
 

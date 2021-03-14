@@ -1,7 +1,7 @@
 '''DataTables server-side for Flask-MongoEngine'''
 import json
 
-from bson import json_util
+from bson import json_util, ObjectId
 from mongoengine.fields import (BooleanField, DecimalField,
                                 EmbeddedDocumentField,
                                 EmbeddedDocumentListField, FloatField,
@@ -112,6 +112,11 @@ class DataTables(object):
             if _q.isdigit():
                 return [Q(**{col: _q})]
             return []
+
+        if self.field_type_dict.get(col) == 'objectID':
+            if not ObjectId.is_valid(_q):
+                return []
+
         if self.field_type_dict.get(col) == 'embed':
             if not self.embed_search:
                 return []
