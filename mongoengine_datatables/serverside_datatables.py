@@ -1,7 +1,8 @@
 '''DataTables server-side for Flask-MongoEngine'''
 import json
+import re
 
-from bson import json_util, ObjectId
+from bson import ObjectId, json_util
 from mongoengine.fields import (BooleanField, DecimalField,
                                 EmbeddedDocumentField,
                                 EmbeddedDocumentListField, FloatField,
@@ -99,11 +100,21 @@ class DataTables(object):
         Adds support for datatables own column search functionality.
         documented here: https://datatables.net/examples/api/multi_filter.html
         '''
-        return [{"column": column['data'],
-                 "value":  column['search']['value'],
-                 "regex":  column['search']['regex']
-                 } for column in self.request_args.get('columns')
-                if column['search']['value'] != ""]
+
+        _cols = []
+        for column in self.request_args.get('columns'):
+            _val = column['search']['value']
+            _regex = column['search']['regex']
+            _data = column['data']
+            if _val == '':
+                continue
+            if not _regex:
+                _cols.append(dict(column=_data, value=_val, regex=False))
+            else:
+                _d = {_data: re.compile(_val, re.IGNORECASE)}
+                self.custom_filter.update(**_d)
+
+        return _cols
 
     def query_by_col_type(self, _q, col):
         '''Build a query depending on the field type'''
