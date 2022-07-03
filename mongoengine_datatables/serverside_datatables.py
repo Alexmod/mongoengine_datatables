@@ -13,13 +13,14 @@ from mongoengine.queryset.visitor import Q, QCombination
 
 class DataTables(object):
     def __init__(self, model, request_args, embed_search={}, q_obj=[],
-                 custom_filter={}):
+                 custom_filter={}, exclude_lst=[]):
         '''
         :param model: The MongoEngine model
         :param request_args: Passed as Flask request.values.get('args')
         :param embed_search: For specific search in EmbeddedDocumentField
         :param q_obj: Additional search results in reference collection
         :param custom_filter: Additional filter
+        :param exclude_lst: For performance exclude(*fields)
         '''
 
         self.model = model
@@ -29,6 +30,7 @@ class DataTables(object):
         self.embed_search = embed_search
         self.q_obj = q_obj
         self.custom_filter = custom_filter
+        self.exclude_lst = exclude_lst
 
         _num_types = {IntField, BooleanField, DecimalField, FloatField,
                       LongField, SequenceField}
@@ -177,7 +179,7 @@ class DataTables(object):
     def results(self):
         _res = self.model.objects(self.get_search_query)
         _order_by = f'{self.order_dir}{self.order_column}'
-        _results = _res.order_by(_order_by).skip(
+        _results = _res.exclude(*self.exclude_lst).order_by(_order_by).skip(
             self.start).limit(self.limit).as_pymongo()
 
         # Fix 'ObjectId' is not JSON serializable
