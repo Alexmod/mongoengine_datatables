@@ -182,12 +182,17 @@ class DataTables(object):
         _results = _res.exclude(*self.exclude_lst).order_by(_order_by).skip(
             self.start).limit(self.limit).as_pymongo()
 
+        # Use aggregate is very slow
+
         # Fix 'ObjectId' is not JSON serializable
         data = json.loads(json_util.dumps(_results))
         return dict(data=data, count=_res.count())
 
     def get_rows(self):
-        return {'recordsTotal': self.total_records,
-                'recordsFiltered': self.results().get('count'),
+        _res = self.results()
+        rec_totals = self.total_records if self.search_string \
+            else _res.get('count')
+        return {'recordsTotal': rec_totals,
+                'recordsFiltered': _res.get('count'),
                 'draw': int(str(self.draw)),
-                'data': self.results().get('data')}
+                'data': _res.get('data')}
