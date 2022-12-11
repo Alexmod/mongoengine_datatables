@@ -145,9 +145,8 @@ class DataTables(object):
     def get_search_query(self):
         '''Create search request'''
         queries = []
-        _column_names = [d['data']
-                         for d in self.columns if d['data']
-                         in self.field_type_dict.keys()]
+        _column_names = [d['data'] for d in self.columns if d['data']
+                         in self.field_type_dict.keys() and d['searchable']]
         # global search for all columns
         if self.search_string:
             for col in _column_names:
