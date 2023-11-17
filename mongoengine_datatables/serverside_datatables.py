@@ -122,7 +122,9 @@ class DataTables(object):
         '''Build a query depending on the field type'''
 
         if self.field_type_dict.get(col) == 'number':
-            if _q.isdigit():
+            # Fix OverflowError: MongoDB can only handle up to 8-byte ints
+            # import sys;len(str(sys.maxsize)) ans: 19
+            if _q.isdigit() and len(_q) < 19:
                 return [Q(**{col: _q})]
             return []
 
