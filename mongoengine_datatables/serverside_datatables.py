@@ -1,4 +1,4 @@
-'''DataTables server-side for Flask-MongoEngine'''
+"""DataTables server-side for Flask-MongoEngine supports both DT 1.x and 2.x"""
 import json
 import re
 
@@ -12,19 +12,22 @@ from mongoengine.queryset.visitor import Q, QCombination
 
 
 class DataTables(object):
+    # Class-level cache for field_type_dict per model
+    _cached_field_type_dict = {}
+
     def __init__(self, model, request_args, embed_search={}, q_obj=[],
                  custom_filter={}, exclude_lst=[]):
-        '''
-        :param model: The MongoEngine model
-        :param request_args: Passed as Flask request.values.get('args')
-        :param embed_search: For specific search in EmbeddedDocumentField
-        :param q_obj: Additional search results in reference collection
-        :param custom_filter: Additional filter
-        :param exclude_lst: For performance exclude(*fields)
-        '''
-
+        """
+        :param model: The MongoEngine model.
+        :param request_args: Passed as Flask request.values.get('args').
+        :param embed_search: For specific search inside EmbeddedDocumentField.
+        :param q_obj: Additional search queries in reference collections.
+        :param custom_filter: Additional filters.
+        :param exclude_lst: Fields to exclude for performance optimization.
+        """
         self.model = model
-        self.request_args = request_args
+        # Normalize request parameters to support both DT 1.x and 2.x.
+        self.request_args = self.normalize_request_args(request_args)
         self.columns = self.request_args.get('columns')
         self.search_string = self.request_args.get('search', {}).get('value')
         self.embed_search = embed_search
@@ -32,24 +35,82 @@ class DataTables(object):
         self.custom_filter = custom_filter
         self.exclude_lst = exclude_lst
 
-        _num_types = {IntField, BooleanField, DecimalField, FloatField,
-                      LongField, SequenceField}
-        _embed_types = {EmbeddedDocumentField, EmbeddedDocumentListField}
+        # Cache field type dictionary per model to avoid recalculating
+        if model not in DataTables._cached_field_type_dict:
+            _num_types = {IntField, BooleanField, DecimalField, FloatField,
+                          LongField, SequenceField}
+            _embed_types = {EmbeddedDocumentField, EmbeddedDocumentListField}
+            field_type_dict = {}
+            for k, v in model._fields.items():
+                if type(v) in _num_types:
+                    field_type_dict[k] = 'number'
+                elif type(v) in {ReferenceField}:
+                    field_type_dict[k] = 'reference'
+                elif type(v) in {ObjectIdField}:
+                    field_type_dict[k] = 'objectID'
+                elif type(v) in {ListField}:
+                    field_type_dict[k] = 'list'
+                elif type(v) in _embed_types:
+                    field_type_dict[k] = 'embed'
+                else:
+                    field_type_dict[k] = 'other'
+            DataTables._cached_field_type_dict[model] = field_type_dict
+        self.field_type_dict = DataTables._cached_field_type_dict[model]
 
-        self.field_type_dict = {}
-        for k, v in model._fields.items():
-            if type(v) in _num_types:
-                self.field_type_dict[k] = 'number'
-            elif type(v) in {ReferenceField}:
-                self.field_type_dict[k] = 'reference'
-            elif type(v) in {ObjectIdField}:
-                self.field_type_dict[k] = 'objectID'
-            elif type(v) in {ListField}:
-                self.field_type_dict[k] = 'list'
-            elif type(v) in _embed_types:
-                self.field_type_dict[k] = 'embed'
+    @staticmethod
+    def normalize_request_args(args):
+        """
+        Normalizes request parameters to support both DataTables 1.x and 2.x.
+        Converts keys and value types to a unified format.
+        """
+        normalized = {}
+
+        # Convert draw, start, length parameters.
+        normalized["draw"] = args.get("draw")
+        try:
+            normalized["start"] = int(args.get("start", 0))
+        except (ValueError, TypeError):
+            normalized["start"] = 0
+        try:
+            length = int(args.get("length", 10))
+        except (ValueError, TypeError):
+            length = 10
+        normalized["length"] = None if length == -1 else length
+
+        # Normalize global search parameter.
+        search = args.get("search")
+        if isinstance(search, dict):
+            normalized["search"] = search
+        elif isinstance(search, str):
+            normalized["search"] = {"value": search, "regex": False}
+        else:
+            normalized["search"] = {"value": "", "regex": False}
+
+        # Normalize order (wrap in a list if it is a dictionary).
+        order = args.get("order")
+        if isinstance(order, dict):
+            normalized["order"] = [order]
+        elif isinstance(order, list):
+            normalized["order"] = order
+        else:
+            normalized["order"] = []
+
+        # Normalize columns.
+        columns = args.get("columns")
+        if columns and isinstance(columns, list) and len(columns) > 0:
+            # If columns are provided as strings, convert them to objects.
+            if isinstance(columns[0], str):
+                normalized["columns"] = [
+                    {"data": col, "searchable": True, "orderable": True,
+                     "search": {"value": "", "regex": False}}
+                    for col in columns
+                ]
             else:
-                self.field_type_dict[k] = 'other'
+                normalized["columns"] = columns
+        else:
+            normalized["columns"] = []
+
+        return normalized
 
     @property
     def total_records(self):
@@ -75,55 +136,61 @@ class DataTables(object):
 
     @property
     def limit(self):
-        _length = self.request_args.get("length")
-        if _length == -1:
-            return None
-        return _length
+        return self.request_args.get("length")
 
     @property
     def order_dir(self):
-        ''' Return '' for 'asc' or '-' for 'desc' '''
-        _dir = self.request_args.get("order")[0]["dir"]
+        """
+        Returns '' for 'asc' or '-' for 'desc'.
+        If no order is specified, defaults to 'asc'.
+        """
+        orders = self.request_args.get("order", [])
+        if orders and isinstance(orders, list):
+            _dir = orders[0].get("dir", "asc")
+        else:
+            _dir = "asc"
         _MONGO_ORDER = {'asc': '', 'desc': '-'}
-        return _MONGO_ORDER[_dir]
+        return _MONGO_ORDER.get(_dir, '')
 
     @property
     def order_column(self):
-        '''
+        """
         DataTables provides the index of the order column,
-        but Mongo .sort wants its name.
-        '''
-        _order_col = self.request_args.get("order")[0]["column"]
-        return self.requested_columns[_order_col]
+        but MongoDB requires the column name.
+        If no order is specified, returns an empty string.
+        """
+        orders = self.request_args.get("order", [])
+        if orders and isinstance(orders, list):
+            order_index = orders[0].get("column", 0)
+            requested_columns = self.requested_columns
+            if len(requested_columns) > order_index:
+                return requested_columns[order_index]
+        return ""
 
     @property
     def dt_column_search(self):
-        '''
-        Adds support for datatables own column search functionality.
-        documented here: https://datatables.net/examples/api/multi_filter.html
-        '''
-
+        """
+        Adds support for column-specific search.
+        Reference: https://datatables.net/examples/api/multi_filter.html
+        """
         _cols = []
         for column in self.request_args.get('columns'):
-            _val = column['search']['value']
-            _regex = column['search']['regex']
-            _data = column['data']
+            _val = column.get('search', {}).get('value', '')
+            _regex = column.get('search', {}).get('regex', False)
+            _data = column.get('data')
             if _val == '':
                 continue
             if not _regex:
                 _cols.append(dict(column=_data, value=_val, regex=False))
             else:
+                # Compile regex for case-insensitive search.
                 _d = {_data: re.compile(_val, re.IGNORECASE)}
                 self.custom_filter.update(**_d)
-
         return _cols
 
     def query_by_col_type(self, _q, col):
-        '''Build a query depending on the field type'''
-
+        """Builds a query depending on the field type."""
         if self.field_type_dict.get(col) == 'number':
-            # Fix OverflowError: MongoDB can only handle up to 8-byte ints
-            # import sys;len(str(sys.maxsize)) ans: 19
             if _q.isdigit() and len(_q) < 19:
                 return [Q(**{col: _q})]
             return []
@@ -145,18 +212,18 @@ class DataTables(object):
 
     @property
     def get_search_query(self):
-        '''Create search request'''
+        """Builds the search query."""
         queries = []
-        _column_names = [d['data'] for d in self.columns if d['data']
-                         in self.field_type_dict.keys() and d['searchable']]
-        # global search for all columns
+        _column_names = [d['data'] for d in self.columns if d.get(
+            'data') in self.field_type_dict.keys() and d.get('searchable')]
+        # Global search across all columns.
         if self.search_string:
             for col in _column_names:
                 _q = self.search_string
                 _obj = self.query_by_col_type(_q, col)
                 queries += _obj
 
-        # search by specific columns
+        # Column-specific search.
         _own_col_q = []
         for column_search in self.dt_column_search:
             col = column_search['column']
@@ -178,21 +245,26 @@ class DataTables(object):
         return _search_query
 
     def results(self):
+        """
+        Executes the query and returns results.
+        Note: The use of skip() may become a bottleneck for very large offsets.
+        """
         _res = self.model.objects(self.get_search_query)
         _order_by = f'{self.order_dir}{self.order_column}'
         _results = _res.exclude(*self.exclude_lst).order_by(_order_by).skip(
             self.start).limit(self.limit).as_pymongo()
 
-        # Use aggregate is very slow
-
-        # Fix 'ObjectId' is not JSON serializable
+        # The double conversion via json_util.dumps and json.loads can be heavy
+        # for large result sets. Consider using a custom encoder if performance
+        # becomes an issue.
         data = json.loads(json_util.dumps(_results))
         return dict(data=data, count=_res.count())
 
     def get_rows(self):
         _res = self.results()
-        rec_totals = self.total_records if self.search_string \
-            else _res.get('count')
+        # If no global search, use the cached total record count.
+        rec_totals = self.total_records if self.search_string else _res.get(
+            'count')
         return {'recordsTotal': rec_totals,
                 'recordsFiltered': _res.get('count'),
                 'draw': int(str(self.draw)),
